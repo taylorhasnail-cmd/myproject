@@ -60,10 +60,66 @@ sudo chown -R $USER:$USER /var/www/todo-app
 
 #### 方法1：使用Git克隆（推荐）
 
-如果您的项目在GitHub或其他Git仓库上：
+使用Git克隆是一种高效、可追踪的项目部署方式，特别适合需要频繁更新的项目。
+
+##### 前提条件
+- 项目已托管在Git仓库（如GitHub、GitLab、Gitee等）
+- 服务器已安装Git（已在步骤1中完成）
+- （可选）已配置SSH密钥以避免每次操作都需要输入密码
+
+##### 在服务器上克隆项目
+
+1. **克隆公开仓库**
+   如果您的Git仓库是公开的，可以直接使用HTTPS URL克隆：
+   
+   ```bash
+   git clone https://your-repo-url.git .
+   ```
+   
+   例如：
+   ```bash
+   git clone https://github.com/username/todo-app.git .
+   ```
+
+2. **克隆私有仓库**
+   对于私有仓库，有两种认证方式：
+   
+   - **使用HTTPS和访问令牌**
+     ```bash
+     git clone https://username:access_token@your-repo-url.git .
+     ```
+     
+   - **使用SSH**（推荐，更安全且无需每次输入密码）
+     首先在服务器上生成SSH密钥：
+     ```bash
+     ssh-keygen -t ed25519 -C "your_email@example.com"
+     cat ~/.ssh/id_ed25519.pub
+     ```
+     
+     将输出的公钥添加到您的Git托管平台（GitHub、GitLab等）的SSH密钥设置中，然后使用SSH URL克隆：
+     ```bash
+     git clone git@your-repo-url.git .
+     ```
+     例如：
+     ```bash
+     git clone git@github.com:username/todo-app.git .
+     ```
+
+##### 克隆指定分支
+
+如果您想克隆特定分支而非默认分支：
 
 ```bash
-git clone https://your-repo-url.git .
+ git clone -b branch-name https://your-repo-url.git .
+```
+
+##### 后续更新项目
+
+当您需要更新服务器上的项目代码时，只需执行：
+
+```bash
+ cd /var/www/todo-app
+ git pull origin main  # 替换main为您的主分支名称
 ```
 
 #### 方法2：直接拷贝文件
@@ -257,11 +313,57 @@ pm2 stop todo-app
 
 ## 更新应用
 
-当您需要更新应用时：
+### 使用Git更新
 
-1. 拉取最新代码（如果使用Git）：`git pull`
-2. 安装新的依赖（如果有）：`npm install`
-3. 重启应用：`npm restart todo-app`
+当您需要更新应用代码时，可以使用以下Git命令：
+
+1. 进入项目目录：
+   ```bash
+   cd /var/www/todo-app
+   ```
+   
+2. 拉取最新代码：
+   ```bash
+   git pull origin main  # 替换main为您的主分支名称
+   ```
+   
+3. 如果有代码冲突，需要解决冲突：
+   ```bash
+   git status  # 查看冲突文件
+   # 手动编辑冲突文件解决冲突
+   git add .  # 标记冲突已解决
+   git commit -m "Resolve merge conflicts"
+   ```
+   
+4. 安装新的依赖（如果有）：
+   ```bash
+   npm install
+   ```
+   
+5. 重启应用：
+   ```bash
+   pm2 restart todo-app
+   ```
+
+### 查看Git历史记录
+
+要查看项目的Git提交历史，可以使用：
+```bash
+cd /var/www/todo-app
+git log --oneline
+```
+
+### 切换分支
+
+如果您的项目有多个分支，可以使用以下命令切换分支：
+```bash
+cd /var/www/todo-app
+git checkout branch-name
+npm install  # 可能需要重新安装依赖
+# 使用npm脚本重启（如果您是通过npm start启动的）
+npm restart
+# 或者使用pm2重启（如果您是通过pm2启动的）
+pm2 restart todo-app
 
 ---
 

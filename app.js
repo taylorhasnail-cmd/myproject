@@ -8,7 +8,7 @@ const taskCountElement = document.getElementById('task-count');
 
 // 全局状态
 let todos = [];
-let currentFilter = 'all';
+let currentFilter = 'active';
 
 // 初始化应用
 async function initApp() {
