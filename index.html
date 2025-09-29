@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现代待办事项列表</title>
+    <!-- PWA相关标签 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#3498db">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.svg">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>我的待办事项</h1>
+        </header>
+        
+        <div class="todo-app">
+            <div class="input-section">
+                <input type="text" id="todo-input" placeholder="添加新的待办事项..." autocomplete="off">
+                <button id="add-button">添加</button>
+            </div>
+            
+            <div class="filters">
+                <button class="filter-btn active" data-filter="all">全部</button>
+                <button class="filter-btn" data-filter="active">未完成</button>
+                <button class="filter-btn" data-filter="completed">已完成</button>
+            </div>
+            
+            <ul id="todo-list">
+                <!-- 待办事项将通过JavaScript动态生成 -->
+            </ul>
+            
+            <div class="todo-footer">
+                <span id="task-count">0 项待办</span>
+                <button id="clear-completed">清除已完成</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
