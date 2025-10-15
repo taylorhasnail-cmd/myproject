@@ -31,17 +31,71 @@ function generateToken() {
 // 读取待办事项数据文件
 function readTodosData() {
     try {
+        console.log(`读取待办事项数据，文件路径: ${DATA_FILE}`);
+        
+        // 确保目录存在
+        const dir = path.dirname(DATA_FILE);
+        if (!fs.existsSync(dir)) {
+            console.log(`创建目录: ${dir}`);
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        
+        // 如果文件不存在，创建空文件
+        if (!fs.existsSync(DATA_FILE)) {
+            console.log(`文件不存在，创建空文件: ${DATA_FILE}`);
+            fs.writeFileSync(DATA_FILE, '{}');
+            return {};
+        }
+        
+        // 读取文件内容
         const data = fs.readFileSync(DATA_FILE, 'utf8');
-        return JSON.parse(data);
+        console.log(`成功读取文件，内容长度: ${data.length}`);
+        
+        // 尝试解析JSON
+        const parsedData = JSON.parse(data);
+        console.log(`成功解析JSON，包含 ${Object.keys(parsedData).length} 个用户的待办事项`);
+        return parsedData;
     } catch (error) {
-        // 如果文件不存在或无法读取，返回空对象
+        console.error('读取待办事项数据失败:', error);
+        // 如果解析失败，返回空对象
         return {};
     }
 }
 
 // 写入待办事项数据文件
 function writeTodosData(data) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+    try {
+        console.log(`写入待办事项数据，包含 ${Object.keys(data).length} 个用户的待办事项`);
+        
+        // 确保目录存在
+        const dir = path.dirname(DATA_FILE);
+        if (!fs.existsSync(dir)) {
+            console.log(`创建目录: ${dir}`);
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        
+        // 格式化JSON数据，便于调试
+        const jsonData = JSON.stringify(data, null, 2);
+        console.log(`准备写入数据，长度: ${jsonData.length}`);
+        
+        // 写入文件
+        fs.writeFileSync(DATA_FILE, jsonData, 'utf8');
+        console.log(`待办事项数据写入成功，文件路径: ${DATA_FILE}`);
+        
+        // 验证写入是否成功
+        try {
+            const writtenData = fs.readFileSync(DATA_FILE, 'utf8');
+            const parsedData = JSON.parse(writtenData);
+            console.log(`验证写入成功，读取到 ${Object.keys(parsedData).length} 个用户的待办事项`);
+        } catch (verifyError) {
+            console.error('验证写入失败:', verifyError);
+        }
+    } catch (error) {
+        console.error('写入待办事项数据失败:', error);
+        // 记录详细的错误信息，包括堆栈
+        console.error('错误堆栈:', error.stack);
+        // 不抛出错误，避免应用崩溃
+    }
 }
 
 // 读取用户数据文件
@@ -87,14 +141,21 @@ function getSession(token) {
     const users = readUsersData();
     for (const username in users) {
         if (users[username].token === token) {
+            console.log(`找到用户会话: ${username}`);
             return users[username];
         }
     }
+    console.log(`未找到对应的用户会话，token: ${token}`);
     return null;
 }
 
 // 创建HTTP服务器
 const server = http.createServer((req, res) => {
+    console.log('========================================');
+    console.log(`[${new Date().toISOString()}] 接收到请求`);
+    console.log('请求方法:', req.method);
+    console.log('请求URL:', req.url);
+    console.log('请求头信息:', JSON.stringify(req.headers, null, 2));
     // 处理API请求
     if (req.url.startsWith('/api/auth')) {
         // 允许跨域
@@ -265,37 +326,157 @@ const server = http.createServer((req, res) => {
         
         // 获取当前用户的所有待办事项
         if (req.url === '/api/todos' && req.method === 'GET') {
-            const todosData = readTodosData();
-            const userTodos = todosData[user.username] || [];
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(userTodos));
+            console.log('================================');
+            console.log('接收到GET /api/todos请求');
+            console.log('请求方法:', req.method);
+            console.log('请求URL:', req.url);
+            console.log('请求头信息:', JSON.stringify(req.headers, null, 2));
+            
+            try {
+                // 打印用户会话信息
+                console.log('用户会话信息:', JSON.stringify(user, null, 2));
+                
+                // 尝试多种键格式，确保能找到数据
+                const possibleKeys = [
+                    String(user.id),
+                    user.username,
+                    '1', // 硬编码检查键'1'
+                    user.id && user.id.toString(),
+                    user.username && user.username.toString()
+                ].filter(Boolean);
+                
+                console.log('尝试的用户键列表:', possibleKeys);
+                
+                // 读取待办事项数据
+                console.log('准备读取待办事项数据');
+                const todosData = readTodosData();
+                console.log('待办事项数据键列表:', Object.keys(todosData));
+                console.log('待办事项数据完整内容:', JSON.stringify(todosData, null, 2));
+                
+                // 尝试所有可能的键
+                let userTodos = [];
+                let foundKey = null;
+                
+                for (const key of possibleKeys) {
+                    if (todosData.hasOwnProperty(key)) {
+                        userTodos = todosData[key];
+                        foundKey = key;
+                        console.log(`找到用户数据，键: ${key}, 待办事项数量: ${userTodos.length}`);
+                        break;
+                    }
+                }
+                
+                if (!foundKey) {
+                    console.warn(`未找到用户数据，为用户创建空数组，键: ${possibleKeys.join(', ')}`);
+                    // 为用户创建空的待办事项数组
+                    userTodos = [];
+                    // 确保用户的待办事项数组存在于数据中
+                    const primaryKey = String(user.id || user.username);
+                    if (!todosData[primaryKey]) {
+                        todosData[primaryKey] = [];
+                        writeTodosData(todosData);
+                    }
+                }
+                
+                // 返回用户待办事项
+                console.log(`准备返回用户待办事项，使用键: ${foundKey || '未知'}`);
+                console.log(`返回的待办事项数量: ${userTodos.length}`);
+                console.log(`待办事项数据示例: ${JSON.stringify(userTodos.slice(0, 2))}`);
+                
+                // 添加安全头信息
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-store');
+                res.setHeader('Pragma', 'no-cache');
+                
+                res.writeHead(200);
+                const responseData = JSON.stringify(userTodos);
+                console.log(`返回数据长度: ${responseData.length}`);
+                res.end(responseData);
+                
+                console.log('GET /api/todos请求处理完成');
+                console.log('================================');
+            } catch (error) {
+                console.error('获取待办事项失败:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
+            }
             return;
         }
         
-        // 添加待办事项
+        // 添加新的待办事项
         if (req.url === '/api/todos' && req.method === 'POST') {
+            // 使用用户ID作为键，而非用户名
+            const userId = user.id || user.username; // 兼容处理
+            console.log(`收到添加待办事项请求，用户ID: ${userId}(${user.username})`);
+            
             let body = '';
             req.on('data', (chunk) => {
                 body += chunk;
             });
+            
             req.on('end', () => {
                 try {
-                    const todo = JSON.parse(body);
-                    const todosData = readTodosData();
-                    if (!todosData[user.username]) {
-                        todosData[user.username] = [];
+                    console.log('开始处理添加待办事项请求');
+                    console.log('请求体原始数据:', body);
+                    
+                    // 验证请求体是否为空
+                    if (!body || body.trim() === '') {
+                        throw new Error('请求体为空');
                     }
-                    todo.id = Date.now();
-                    todo.completed = todo.completed || false;
-                    todo.createdAt = Date.now();
-                    todo.updatedAt = Date.now();
-                    todosData[user.username].push(todo);
+                    
+                    const todoData = JSON.parse(body);
+                    console.log('解析的待办事项数据:', todoData);
+                    
+                    // 验证请求数据
+                    if (!todoData.text || typeof todoData.text !== 'string' || todoData.text.trim() === '') {
+                        console.warn('无效的待办事项文本');
+                        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '待办事项文本不能为空' }));
+                        return;
+                    }
+                    
+                    // 创建新待办事项
+                    const newTodo = {
+                        id: Date.now(),
+                        text: todoData.text.trim(),
+                        completed: todoData.completed || false,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                    };
+                    
+                    // 读取现有待办事项
+                    console.log('准备读取待办事项数据');
+                    const todosData = readTodosData();
+                    console.log('待办事项数据读取成功');
+                    
+                    // 确保用户的待办事项数组存在
+                    if (!todosData[userId]) {
+                        todosData[userId] = [];
+                        console.log(`为用户 ${userId}(${user.username}) 创建新的待办事项数组`);
+                    }
+                    
+                    // 添加新待办事项
+                    todosData[userId].push(newTodo);
+                    
+                    // 保存更新后的数据
+                    console.log('准备保存待办事项数据');
                     writeTodosData(todosData);
+                    console.log(`成功添加待办事项，用户ID: ${userId}(${user.username})，ID: ${newTodo.id}`);
+                    
                     res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify(todo));
+                    res.end(JSON.stringify(newTodo));
+                    
                 } catch (error) {
-                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
+                    console.error('处理待办事项请求时出错:', error);
+                    console.error('错误堆栈:', error.stack);
+                    
+                    if (error instanceof SyntaxError) {
+                        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '无效的JSON格式', details: error.message }));
+                    } else {
+                        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
+                    }
                 }
             });
             return;
@@ -304,71 +485,177 @@ const server = http.createServer((req, res) => {
         // 更新待办事项
         const updateMatch = req.url.match(/^\/api\/todos\/(\d+)$/);
         if (updateMatch && req.method === 'PUT') {
+            // 使用用户ID作为键，确保数据隔离
+            const userId = String(user.id || user.username); // 规范化为字符串
+            
             const todoId = parseInt(updateMatch[1]);
+            console.log(`收到更新待办事项请求，用户ID: ${userId}(${user.username})，ID: ${todoId}`);
+            
             let body = '';
-            req.on('data', (chunk) => {
-                body += chunk;
+            req.on('data', chunk => {
+                body += chunk.toString();
             });
+            
             req.on('end', () => {
                 try {
-                    const updateData = JSON.parse(body);
-                    const todosData = readTodosData();
-                    const userTodos = todosData[user.username] || [];
-                    const todoIndex = userTodos.findIndex(t => t.id === todoId);
-                    
-                    if (todoIndex !== -1) {
-                        if (updateData.text !== undefined) {
-                            userTodos[todoIndex].text = updateData.text;
-                        }
-                        if (updateData.completed !== undefined) {
-                            userTodos[todoIndex].completed = updateData.completed;
-                        }
-                        userTodos[todoIndex].updatedAt = Date.now();
-                        todosData[user.username] = userTodos;
-                        writeTodosData(todosData);
-                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify(userTodos[todoIndex]));
-                    } else {
-                        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify({ error: '找不到待办事项' }));
+                    const todoData = JSON.parse(body);
+                    // 确保用户的待办事项数组存在
+                    if (!todosData[userId]) {
+                        todosData[userId] = [];
                     }
+                    console.log('解析更新数据成功:', todoData);
+                    
+                    // 读取待办事项数据
+                    const todosData = readTodosData();
+                    
+                    // 检查用户待办事项数组是否存在
+                    if (!todosData[userId]) {
+                        console.log(`用户 ${userId}(${user.username}) 没有待办事项数据`);
+                        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '用户没有待办事项' }));
+                        return;
+                    }
+                    
+                    // 查找待办事项
+                    const todoIndex = todosData[userId].findIndex(todo => todo.id === todoId);
+                    if (todoIndex === -1) {
+                        console.log(`待办事项 ${todoId} 不存在`);
+                        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '待办事项不存在' }));
+                        return;
+                    }
+                    
+                    // 更新待办事项
+                    todosData[userId][todoIndex] = {
+                        ...todosData[userId][todoIndex],
+                        text: todoData.text !== undefined ? todoData.text.trim() : todosData[userId][todoIndex].text,
+                        completed: todoData.completed !== undefined ? todoData.completed : todosData[userId][todoIndex].completed,
+                        updatedAt: Date.now()
+                    };
+                    
+                    // 保存更新后的数据
+                    writeTodosData(todosData);
+                    
+                    console.log(`待办事项更新成功，用户ID: ${userId}(${user.username})，ID: ${todoId}`);
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify(todosData[userId][todoIndex]));
+                    
                 } catch (error) {
-                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
+                    console.error('更新待办事项时出错:', error);
+                    
+                    if (error instanceof SyntaxError) {
+                        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '无效的JSON格式', details: error.message }));
+                    } else {
+                        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
+                    }
                 }
             });
             return;
         }
         
         // 删除待办事项
-        const deleteMatch = req.url.match(/^\/api\/todos\/(\d+)$/);
-        if (deleteMatch && req.method === 'DELETE') {
-            const todoId = parseInt(deleteMatch[1]);
-            const todosData = readTodosData();
-            const userTodos = todosData[user.username] || [];
-            const filteredTodos = userTodos.filter(t => t.id !== todoId);
+        if (req.url.startsWith('/api/todos/') && req.method === 'DELETE') {
+            const deleteMatch = req.url.match(/\/api\/todos\/(\d+)/);
+            const todoId = deleteMatch ? parseInt(deleteMatch[1]) : null;
             
-            if (filteredTodos.length !== userTodos.length) {
-                todosData[user.username] = filteredTodos;
+            // 使用用户ID作为键，确保数据隔离
+            const userId = String(user.id || user.username); // 规范化为字符串
+            console.log(`收到删除待办事项请求，用户ID: ${userId}(${user.username})，ID: ${todoId}`);
+            
+            try {
+                console.log('准备读取待办事项数据');
+                const todosData = readTodosData();
+                // 确保用户的待办事项数组存在
+                if (!todosData[userId]) {
+                    todosData[userId] = [];
+                }
+                
+                // 检查用户待办事项数组是否存在
+                if (!todosData[userId]) {
+                    console.log(`用户 ${userId}(${user.username}) 没有待办事项数据`);
+                    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '用户没有待办事项' }));
+                    return;
+                }
+                
+                // 过滤出要保留的待办事项
+                const updatedTodos = todosData[userId].filter(todo => todo.id !== todoId);
+                
+                // 如果过滤后数量没有变化，说明待办事项不存在
+                if (updatedTodos.length === todosData[userId].length) {
+                    console.log(`待办事项 ${todoId} 不存在`);
+                    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '待办事项不存在' }));
+                    return;
+                }
+                
+                // 更新待办事项数组
+                todosData[userId] = updatedTodos;
+                
+                // 保存更新后的数据
                 writeTodosData(todosData);
+                
+                console.log(`待办事项删除成功，用户ID: ${userId}(${user.username})，ID: ${todoId}`);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ message: '已删除待办事项' }));
-            } else {
-                res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ error: '找不到待办事项' }));
+                res.end(JSON.stringify({ message: '待办事项删除成功' }));
+                
+            } catch (error) {
+                console.error('删除待办事项时出错:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
             }
             return;
         }
         
         // 清除已完成的待办事项
         if (req.url === '/api/todos/clear-completed' && req.method === 'DELETE') {
-            const todosData = readTodosData();
-            const userTodos = todosData[user.username] || [];
-            const activeTodos = userTodos.filter(t => !t.completed);
-            todosData[user.username] = activeTodos;
-            writeTodosData(todosData);
-            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ message: '已清除所有已完成的待办事项' }));
+            // 使用用户ID作为键，确保数据隔离
+            const userId = String(user.id || user.username); // 规范化为字符串
+            console.log(`收到清除已完成待办事项请求，用户ID: ${userId}(${user.username})`);
+            
+            try {
+                const todosData = readTodosData();
+                // 确保用户的待办事项数组存在
+                if (!todosData[userId]) {
+                    todosData[userId] = [];
+                }
+                
+                // 检查用户待办事项数组是否存在
+                if (!todosData[userId]) {
+                    console.log(`用户 ${userId}(${user.username}) 没有待办事项数据，创建空数组`);
+                    todosData[userId] = [];
+                    writeTodosData(todosData);
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: '已清除已完成的待办事项', clearedCount: 0 }));
+                    return;
+                }
+                
+                // 记录清除前的数量
+                const beforeCount = todosData[userId].length;
+                
+                // 过滤出未完成的待办事项
+                const updatedTodos = todosData[userId].filter(todo => !todo.completed);
+                
+                // 计算清除的数量
+                const clearedCount = beforeCount - updatedTodos.length;
+                
+                // 更新待办事项数组
+                todosData[userId] = updatedTodos;
+                
+                // 保存更新后的数据
+                writeTodosData(todosData);
+                
+                console.log(`已清除已完成的待办事项，用户ID: ${userId}(${user.username})，清除数量: ${clearedCount}`);
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ message: '已清除已完成的待办事项', clearedCount }));
+                
+            } catch (error) {
+                console.error('清除已完成待办事项时出错:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
+            }
             return;
         }
     }

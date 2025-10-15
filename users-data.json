@@ -2,7 +2,13 @@
   "1": {
     "username": "1",
     "password": "5666fa60",
-    "token": "kpc28ouk4iimgsab3rh",
+    "token": null,
     "createdAt": 1760550487501
+  },
+  "2": {
+    "username": "2",
+    "password": "582a62c0",
+    "token": null,
+    "createdAt": 1760550817959
   }
 }
