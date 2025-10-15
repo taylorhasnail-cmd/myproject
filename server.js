@@ -57,7 +57,19 @@ function readUsersData() {
 
 // 写入用户数据文件
 function writeUsersData(data) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2), 'utf8');
+    try {
+        console.log(`尝试写入用户数据到: ${USERS_FILE}`);
+        // 确保目录存在
+        const dir = path.dirname(USERS_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2), 'utf8');
+        console.log('用户数据写入成功');
+    } catch (error) {
+        console.error('写入用户数据失败:', error);
+        throw error;
+    }
 }
 
 // 验证用户凭据
@@ -98,46 +110,72 @@ const server = http.createServer((req, res) => {
         }
         
         // 注册新用户
-        if (req.url === '/api/auth/register' && req.method === 'POST') {
-            let body = '';
-            req.on('data', (chunk) => {
-                body += chunk;
-            });
-            req.on('end', () => {
-                try {
-                    const userData = JSON.parse(body);
-                    const users = readUsersData();
-                    
-                    if (users[userData.username]) {
-                        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify({ error: '用户名已存在' }));
-                        return;
+            if (req.url === '/api/auth/register' && req.method === 'POST') {
+                let body = '';
+                req.on('data', (chunk) => {
+                    body += chunk;
+                });
+                req.on('end', () => {
+                    try {
+                        console.log('开始处理注册请求');
+                        console.log('请求体原始数据:', body);
+                        
+                        // 验证请求体是否为空
+                        if (!body || body.trim() === '') {
+                            throw new Error('请求体为空');
+                        }
+                        
+                        const userData = JSON.parse(body);
+                        console.log('解析的用户数据:', userData);
+                        
+                        // 验证必要字段
+                        if (!userData.username || !userData.password) {
+                            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                            res.end(JSON.stringify({ error: '用户名和密码不能为空' }));
+                            return;
+                        }
+                        
+                        // 读取用户数据
+                        console.log('准备读取用户数据');
+                        const users = readUsersData();
+                        console.log('用户数据读取成功，现有用户数量:', Object.keys(users).length);
+                        
+                        if (users[userData.username]) {
+                            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                            res.end(JSON.stringify({ error: '用户名已存在' }));
+                            return;
+                        }
+                        
+                        const newUser = {
+                            username: userData.username,
+                            password: hashPassword(userData.password),
+                            token: null,
+                            createdAt: Date.now()
+                        };
+                        
+                        users[userData.username] = newUser;
+                        console.log('准备保存用户数据');
+                        writeUsersData(users);
+                        console.log('用户数据保存成功');
+                        
+                        // 为新用户创建空的待办事项列表
+                        console.log('准备为新用户创建待办事项列表');
+                        const todosData = readTodosData();
+                        todosData[userData.username] = [];
+                        writeTodosData(todosData);
+                        console.log('待办事项列表创建成功');
+                        
+                        res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ message: '注册成功' }));
+                    } catch (error) {
+                        console.error('注册时发生错误:', error);
+                        console.error('错误堆栈:', error.stack);
+                        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
                     }
-                    
-                    const newUser = {
-                        username: userData.username,
-                        password: hashPassword(userData.password),
-                        token: null,
-                        createdAt: Date.now()
-                    };
-                    
-                    users[userData.username] = newUser;
-                    writeUsersData(users);
-                    
-                    // 为新用户创建空的待办事项列表
-                    const todosData = readTodosData();
-                    todosData[userData.username] = [];
-                    writeTodosData(todosData);
-                    
-                    res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ message: '注册成功' }));
-                } catch (error) {
-                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
-                }
-            });
-            return;
-        }
+                });
+                return;
+            }
         
         // 用户登录
         if (req.url === '/api/auth/login' && req.method === 'POST') {
@@ -164,8 +202,9 @@ const server = http.createServer((req, res) => {
                         res.end(JSON.stringify({ error: '用户名或密码错误' }));
                     }
                 } catch (error) {
-                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
+                    console.error('注册时发生错误:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '服务器错误', details: error.message }));
                 }
             });
             return;

@@ -230,11 +230,12 @@ async function register() {
             loginUsernameInput.value = username;
             loginPasswordInput.focus();
         } else {
-            registerError.textContent = data.error || '注册失败';
+            // 显示服务器返回的详细错误信息
+            registerError.textContent = data.error + (data.details ? `: ${data.details}` : '') || '注册失败';
         }
     } catch (error) {
         console.error('注册失败:', error);
-        registerError.textContent = '服务器错误，请稍后重试';
+        registerError.textContent = '网络错误，请检查服务器连接';
     }
 }
 
