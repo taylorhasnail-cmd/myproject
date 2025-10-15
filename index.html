@@ -10,15 +10,357 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="apple-touch-icon" href="icons/icon-192x192.svg">
-    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* 全局样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* 标题样式 */
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+        }
+
+        /* 用户信息区域 */
+        #user-info {
+            background-color: #3498db;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #username {
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        #logout-button {
+            background-color: #fff;
+            color: #3498db;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        #logout-button:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* 认证容器 */
+        #auth-container {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        /* 表单样式 */
+        .auth-form {
+            display: none;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        .auth-form h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .error-message {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 5px;
+            min-height: 20px;
+        }
+
+        #login-button, #register-button {
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #login-button:hover, #register-button:hover {
+            background-color: #2980b9;
+        }
+
+        /* 应用容器 */
+        .todo-app {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        /* 输入区域 */
+        .input-section {
+            display: flex;
+            margin-bottom: 25px;
+        }
+
+        #todo-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px 0 0 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        #todo-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        #add-button {
+            padding: 12px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        #add-button:hover {
+            background-color: #2980b9;
+        }
+
+        /* 待办事项列表 */
+        #todo-list {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        .todo-item:hover {
+            background-color: #f9f9f9;
+        }
+
+        .todo-item input[type="checkbox"] {
+            margin-right: 15px;
+            transform: scale(1.2);
+        }
+
+        .todo-text {
+            flex: 1;
+            font-size: 16px;
+        }
+
+        .todo-text.completed {
+            text-decoration: line-through;
+            color: #888;
+        }
+
+        .delete-button {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .delete-button:hover {
+            background-color: #c0392b;
+        }
+
+        /* 编辑输入框 */
+        .edit-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #3498db;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        /* 筛选区域 */
+        .filters {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+
+        .filter-btn {
+            padding: 8px 15px;
+            background-color: #f0f0f0;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .filter-btn.active {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .filter-btn:hover:not(.active) {
+            background-color: #e0e0e0;
+        }
+
+        /* 任务计数 */
+        #task-count {
+            font-size: 14px;
+            color: #666;
+        }
+
+        /* 清除按钮 */
+        #clear-completed {
+            padding: 8px 15px;
+            background-color: #f39c12;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #clear-completed:hover {
+            background-color: #e67e22;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 40px 0;
+            color: #888;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 600px) {
+            .filters {
+                flex-wrap: wrap;
+            }
+
+            #user-info {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>我的待办事项</h1>
+            <div id="user-info" style="display: none;">
+                <span id="username"></span>
+                <button id="logout-button">登出</button>
+            </div>
         </header>
         
-        <div class="todo-app">
+        <!-- 认证容器 -->
+        <div id="auth-container">
+            <!-- 登录表单 -->
+            <div id="login-form" class="auth-form active">
+                <h2>登录</h2>
+                <div class="form-group">
+                    <label for="login-username">用户名</label>
+                    <input type="text" id="login-username" placeholder="请输入用户名" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">密码</label>
+                    <input type="password" id="login-password" placeholder="请输入密码" autocomplete="current-password">
+                </div>
+                <div id="login-error" class="error-message"></div>
+                <button id="login-button">登录</button>
+                <p>还没有账号？<a href="#" id="show-register">立即注册</a></p>
+            </div>
+            
+            <!-- 注册表单 -->
+            <div id="register-form" class="auth-form">
+                <h2>注册</h2>
+                <div class="form-group">
+                    <label for="register-username">用户名</label>
+                    <input type="text" id="register-username" placeholder="请输入用户名" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="register-password">密码</label>
+                    <input type="password" id="register-password" placeholder="请输入密码" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="register-confirm-password">确认密码</label>
+                    <input type="password" id="register-confirm-password" placeholder="请再次输入密码" autocomplete="new-password">
+                </div>
+                <div id="register-error" class="error-message"></div>
+                <button id="register-button">注册</button>
+                <p>已有账号？<a href="#" id="show-login">立即登录</a></p>
+            </div>
+        </div>
+        
+        <!-- 待办事项应用（初始隐藏） -->
+        <div id="todo-app" class="todo-app" style="display: none;">
             <div class="input-section">
                 <input type="text" id="todo-input" placeholder="添加新的待办事项..." autocomplete="off">
                 <button id="add-button">添加</button>

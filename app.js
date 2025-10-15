@@ -1,4 +1,25 @@
 // DOM 元素引用
+// 认证相关元素
+const authContainer = document.getElementById('auth-container');
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const userInfo = document.getElementById('user-info');
+const usernameElement = document.getElementById('username');
+const logoutButton = document.getElementById('logout-button');
+const showRegisterLink = document.getElementById('show-register');
+const showLoginLink = document.getElementById('show-login');
+const loginUsernameInput = document.getElementById('login-username');
+const loginPasswordInput = document.getElementById('login-password');
+const loginButton = document.getElementById('login-button');
+const loginError = document.getElementById('login-error');
+const registerUsernameInput = document.getElementById('register-username');
+const registerPasswordInput = document.getElementById('register-password');
+const registerConfirmPasswordInput = document.getElementById('register-confirm-password');
+const registerButton = document.getElementById('register-button');
+const registerError = document.getElementById('register-error');
+
+// 待办事项相关元素
+const todoApp = document.getElementById('todo-app');
 const todoInput = document.getElementById('todo-input');
 const addButton = document.getElementById('add-button');
 const todoList = document.getElementById('todo-list');
@@ -9,17 +30,239 @@ const taskCountElement = document.getElementById('task-count');
 // 全局状态
 let todos = [];
 let currentFilter = 'active';
+let currentUser = null;
+let authToken = null;
 
-// 初始化应用
-async function initApp() {
-    // 从服务器加载待办事项
-    await loadTodos();
-    // 渲染待办事项列表
-    renderTodos();
-    // 更新任务计数
-    updateTaskCount();
-    // 添加事件监听器
-    addEventListeners();
+// 添加认证相关事件监听器
+function addAuthEventListeners() {
+    // 切换到注册表单
+    showRegisterLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchForm('register');
+    });
+    
+    // 切换到登录表单
+    showLoginLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchForm('login');
+    });
+    
+    // 登录按钮点击事件
+    loginButton.addEventListener('click', login);
+    
+    // 注册按钮点击事件
+    registerButton.addEventListener('click', register);
+    
+    // 登出按钮点击事件
+    logoutButton.addEventListener('click', logout);
+    
+    // 输入框回车事件
+    loginUsernameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') loginPasswordInput.focus();
+    });
+    
+    loginPasswordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') login();
+    });
+    
+    registerUsernameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') registerPasswordInput.focus();
+    });
+    
+    registerPasswordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') registerConfirmPasswordInput.focus();
+    });
+    
+    registerConfirmPasswordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') register();
+    });
+}
+
+// 切换表单显示
+function switchForm(formType) {
+    // 清除错误信息
+    loginError.textContent = '';
+    registerError.textContent = '';
+    
+    if (formType === 'login') {
+        loginForm.classList.add('active');
+        registerForm.classList.remove('active');
+    } else {
+        loginForm.classList.remove('active');
+        registerForm.classList.add('active');
+    }
+}
+
+// 检查认证状态
+async function checkAuthStatus() {
+    const savedToken = localStorage.getItem('authToken');
+    const savedUsername = localStorage.getItem('username');
+    
+    if (savedToken && savedUsername) {
+        try {
+            // 验证令牌是否有效
+            const response = await fetch('/api/auth/verify', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${savedToken}`
+                }
+            });
+            
+            if (response.ok) {
+                authToken = savedToken;
+                currentUser = savedUsername;
+                showTodoApp();
+                return true;
+            }
+        } catch (error) {
+            console.error('验证会话失败:', error);
+        }
+    }
+    
+    // 未登录状态
+    showAuthForms();
+    return false;
+}
+
+// 显示认证表单
+function showAuthForms() {
+    authContainer.style.display = 'block';
+    todoApp.style.display = 'none';
+    userInfo.style.display = 'none';
+}
+
+// 显示待办事项应用
+function showTodoApp() {
+    authContainer.style.display = 'none';
+    todoApp.style.display = 'block';
+    userInfo.style.display = 'block';
+    usernameElement.textContent = currentUser;
+    
+    // 加载用户的待办事项
+    loadTodos();
+}
+
+// 用户登录
+async function login() {
+    const username = loginUsernameInput.value.trim();
+    const password = loginPasswordInput.value.trim();
+    
+    if (!username || !password) {
+        loginError.textContent = '请输入用户名和密码';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // 保存认证信息
+            authToken = data.token;
+            currentUser = data.username;
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('username', currentUser);
+            
+            // 清空表单
+            loginUsernameInput.value = '';
+            loginPasswordInput.value = '';
+            loginError.textContent = '';
+            
+            // 显示待办事项应用
+            showTodoApp();
+        } else {
+            loginError.textContent = data.error || '登录失败';
+        }
+    } catch (error) {
+        console.error('登录失败:', error);
+        loginError.textContent = '服务器错误，请稍后重试';
+    }
+}
+
+// 用户注册
+async function register() {
+    const username = registerUsernameInput.value.trim();
+    const password = registerPasswordInput.value.trim();
+    const confirmPassword = registerConfirmPasswordInput.value.trim();
+    
+    // 验证输入
+    if (!username || !password || !confirmPassword) {
+        registerError.textContent = '请填写所有字段';
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        registerError.textContent = '两次输入的密码不一致';
+        return;
+    }
+    
+    if (password.length < 6) {
+        registerError.textContent = '密码长度至少为6位';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // 注册成功后切换到登录表单
+            registerError.textContent = '';
+            registerUsernameInput.value = '';
+            registerPasswordInput.value = '';
+            registerConfirmPasswordInput.value = '';
+            
+            switchForm('login');
+            loginUsernameInput.value = username;
+            loginPasswordInput.focus();
+        } else {
+            registerError.textContent = data.error || '注册失败';
+        }
+    } catch (error) {
+        console.error('注册失败:', error);
+        registerError.textContent = '服务器错误，请稍后重试';
+    }
+}
+
+// 用户登出
+async function logout() {
+    try {
+        await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+    } catch (error) {
+        console.error('登出失败:', error);
+    } finally {
+        // 清除本地认证信息
+        authToken = null;
+        currentUser = null;
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('username');
+        
+        // 清空待办事项
+        todos = [];
+        renderTodos();
+        
+        // 显示认证表单
+        showAuthForms();
+    }
 }
 
 // 添加事件监听器
@@ -55,20 +298,28 @@ async function addTodo() {
             const response = await fetch('/api/todos', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
                 },
                 body: JSON.stringify({ text, completed: false })
             });
+            
+            if (response.status === 401) {
+                // 认证失效，需要重新登录
+                logout();
+                return;
+            }
+            
             const newTodo = await response.json();
             todos.push(newTodo);
             
-            // 保存到本地存储备份
-            localStorage.setItem('todos', JSON.stringify(todos));
+            // 保存到本地存储备份（带用户名前缀）
+            saveTodosLocally();
             renderTodos();
             updateTaskCount();
             todoInput.value = '';
         } catch (error) {
-            console.error('Failed to add todo to server:', error);
+            console.error('添加待办事项失败:', error);
             // 降级处理：只保存到本地
             const newTodo = {
                 id: Date.now(),
@@ -76,7 +327,7 @@ async function addTodo() {
                 completed: false
             };
             todos.push(newTodo);
-            localStorage.setItem('todos', JSON.stringify(todos));
+            saveTodosLocally();
             renderTodos();
             updateTaskCount();
             todoInput.value = '';
@@ -92,24 +343,31 @@ async function toggleTodo(id) {
         
         try {
             // 尝试更新服务器
-            await fetch(`/api/todos/${id}`, {
+            const response = await fetch(`/api/todos/${id}`, {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
                 },
                 body: JSON.stringify({ completed: newCompletedState })
             });
             
+            if (response.status === 401) {
+                // 认证失效，需要重新登录
+                logout();
+                return;
+            }
+            
             // 更新本地数据
             todo.completed = newCompletedState;
-            localStorage.setItem('todos', JSON.stringify(todos));
+            saveTodosLocally();
             renderTodos();
             updateTaskCount();
         } catch (error) {
-            console.error('Failed to toggle todo on server:', error);
+            console.error('更新待办事项状态失败:', error);
             // 降级处理：只更新本地
             todo.completed = newCompletedState;
-            localStorage.setItem('todos', JSON.stringify(todos));
+            saveTodosLocally();
             renderTodos();
             updateTaskCount();
         }
@@ -120,20 +378,29 @@ async function toggleTodo(id) {
 async function deleteTodo(id) {
     try {
         // 尝试从服务器删除
-        await fetch(`/api/todos/${id}`, {
-            method: 'DELETE'
+        const response = await fetch(`/api/todos/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
         });
+        
+        if (response.status === 401) {
+            // 认证失效，需要重新登录
+            logout();
+            return;
+        }
         
         // 更新本地数据
         todos = todos.filter(todo => todo.id !== id);
-        localStorage.setItem('todos', JSON.stringify(todos));
+        saveTodosLocally();
         renderTodos();
         updateTaskCount();
     } catch (error) {
-        console.error('Failed to delete todo from server:', error);
+        console.error('删除待办事项失败:', error);
         // 降级处理：只更新本地
         todos = todos.filter(todo => todo.id !== id);
-        localStorage.setItem('todos', JSON.stringify(todos));
+        saveTodosLocally();
         renderTodos();
         updateTaskCount();
     }
@@ -159,20 +426,29 @@ function setFilter(filter) {
 async function clearCompletedTodos() {
     try {
         // 尝试在服务器上清除
-        await fetch('/api/todos/clear-completed', {
-            method: 'DELETE'
+        const response = await fetch('/api/todos/clear-completed', {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
         });
+        
+        if (response.status === 401) {
+            // 认证失效，需要重新登录
+            logout();
+            return;
+        }
         
         // 更新本地数据
         todos = todos.filter(todo => !todo.completed);
-        localStorage.setItem('todos', JSON.stringify(todos));
+        saveTodosLocally();
         renderTodos();
         updateTaskCount();
     } catch (error) {
-        console.error('Failed to clear completed todos on server:', error);
+        console.error('清除已完成待办事项失败:', error);
         // 降级处理：只更新本地
         todos = todos.filter(todo => !todo.completed);
-        localStorage.setItem('todos', JSON.stringify(todos));
+        saveTodosLocally();
         renderTodos();
         updateTaskCount();
     }
@@ -229,7 +505,7 @@ function createTodoElement(todo) {
 }
 
 // 启用编辑模式
-function enableEditMode(id, element) {
+async function enableEditMode(id, element) {
     const currentTodo = todos.find(todo => todo.id === id);
     const input = document.createElement('input');
     input.type = 'text';
@@ -243,18 +519,48 @@ function enableEditMode(id, element) {
     input.focus();
     
     // 处理编辑完成
-    function finishEditing() {
+    async function finishEditing() {
         const newText = input.value.trim();
         if (newText !== '') {
-            todos = todos.map(todo => {
-                if (todo.id === id) {
-                    return { ...todo, text: newText };
+            try {
+                // 尝试更新服务器
+                const response = await fetch(`/api/todos/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ text: newText })
+                });
+                
+                if (response.status === 401) {
+                    // 认证失效，需要重新登录
+                    logout();
+                    return;
                 }
-                return todo;
-            });
-            
-            saveTodos();
-            renderTodos();
+                
+                // 更新本地数据
+                todos = todos.map(todo => {
+                    if (todo.id === id) {
+                        return { ...todo, text: newText };
+                    }
+                    return todo;
+                });
+                
+                saveTodosLocally();
+                renderTodos();
+            } catch (error) {
+                console.error('更新待办事项失败:', error);
+                // 降级处理：只更新本地
+                todos = todos.map(todo => {
+                    if (todo.id === id) {
+                        return { ...todo, text: newText };
+                    }
+                    return todo;
+                });
+                saveTodosLocally();
+                renderTodos();
+            }
         } else {
             // 如果文本为空，则删除该待办事项
             deleteTodo(id);
@@ -300,51 +606,95 @@ function updateTaskCount() {
 
 // 注意：saveTodos函数已被重构到各个操作函数中，保留此函数以确保向后兼容
 function saveTodos() {
-    localStorage.setItem('todos', JSON.stringify(todos));
+    saveTodosLocally();
 }
 
 // 从服务器加载待办事项
 async function loadTodos() {
+    if (!authToken || !currentUser) return;
+    
     try {
-        const response = await fetch('/api/todos');
+        const response = await fetch('/api/todos', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.status === 401) {
+            // 认证失效，需要重新登录
+            logout();
+            return;
+        }
+        
         const serverTodos = await response.json();
         
         // 如果服务器有数据，使用服务器数据
-        if (serverTodos && serverTodos.length > 0) {
+        if (Array.isArray(serverTodos)) {
             todos = serverTodos;
             // 同时保存到本地存储作为备份
-            localStorage.setItem('todos', JSON.stringify(todos));
+            saveTodosLocally();
         } else {
-            // 如果服务器没有数据，尝试从本地存储加载
-            const savedTodos = localStorage.getItem('todos');
-            if (savedTodos) {
-                try {
-                    todos = JSON.parse(savedTodos);
-                    // 如果本地有数据，同步到服务器
-                    if (todos.length > 0) {
-                        await syncLocalTodosToServer();
-                    }
-                } catch (e) {
-                    console.error('Failed to parse saved todos:', e);
-                    todos = [];
-                }
-            }
+            // 如果服务器没有数据，尝试从本地存储加载用户特定的数据
+            loadTodosLocally();
         }
     } catch (error) {
-        console.error('Failed to load todos from server:', error);
+        console.error('加载待办事项失败:', error);
         // 降级到本地存储
-        const savedTodos = localStorage.getItem('todos');
-        todos = savedTodos ? JSON.parse(savedTodos) : [];
+        loadTodosLocally();
+    }
+    
+    // 渲染待办事项并更新计数
+    renderTodos();
+    updateTaskCount();
+}
+
+// 本地保存待办事项（带用户标识）
+function saveTodosLocally() {
+    if (currentUser) {
+        const key = `todos_${currentUser}`;
+        localStorage.setItem(key, JSON.stringify(todos));
+    }
+}
+
+// 本地加载待办事项（带用户标识）
+function loadTodosLocally() {
+    if (currentUser) {
+        const key = `todos_${currentUser}`;
+        const savedTodos = localStorage.getItem(key);
+        if (savedTodos) {
+            try {
+                todos = JSON.parse(savedTodos);
+            } catch (e) {
+                console.error('解析保存的待办事项失败:', e);
+                todos = [];
+            }
+        } else {
+            todos = [];
+        }
+    } else {
+        todos = [];
     }
 }
 
 // 将本地待办事项同步到服务器
 async function syncLocalTodosToServer() {
+    if (!authToken || !currentUser) return;
+    
     try {
-        // 先清空服务器上的数据
-        const existingTodos = await fetch('/api/todos').then(res => res.json());
+        // 先清空服务器上当前用户的数据
+        const existingTodos = await fetch('/api/todos', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        }).then(res => res.json());
+        
         for (const todo of existingTodos) {
-            await fetch(`/api/todos/${todo.id}`, { method: 'DELETE' });
+            await fetch(`/api/todos/${todo.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            });
         }
         
         // 然后上传本地数据
@@ -352,13 +702,14 @@ async function syncLocalTodosToServer() {
             await fetch('/api/todos', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
                 },
                 body: JSON.stringify({ text: todo.text, completed: todo.completed })
             });
         }
     } catch (error) {
-        console.error('Failed to sync local todos to server:', error);
+        console.error('同步本地待办事项到服务器失败:', error);
     }
 }
 
@@ -369,10 +720,20 @@ function escapeHTML(text) {
     return div.innerHTML;
 }
 
+// 初始化应用
+async function initApp() {
+    // 添加认证事件监听器
+    addAuthEventListeners();
+    // 添加待办事项事件监听器
+    addEventListeners();
+    // 检查认证状态
+    await checkAuthStatus();
+}
+
 // 在DOM内容加载完成后初始化应用
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     // 初始化应用
-    await initApp();
+    initApp();
     
     // 注册Service Worker，实现PWA功能
     if ('serviceWorker' in navigator) {

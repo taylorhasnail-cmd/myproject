@@ -10,31 +10,85 @@ const scriptDir = __dirname;
 
 // 数据文件路径
 const DATA_FILE = path.join(scriptDir, 'todos-data.json');
+const USERS_FILE = path.join(scriptDir, 'users-data.json');
 
-// 读取数据文件
+// 简单的密码哈希函数（实际应用中应使用更安全的哈希算法）
+function hashPassword(password) {
+    let hash = 0;
+    for (let i = 0; i < password.length; i++) {
+        const char = password.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString(16);
+}
+
+// 生成简单的会话令牌
+function generateToken() {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+// 读取待办事项数据文件
 function readTodosData() {
     try {
         const data = fs.readFileSync(DATA_FILE, 'utf8');
         return JSON.parse(data);
     } catch (error) {
-        // 如果文件不存在或无法读取，返回空数组
-        return [];
+        // 如果文件不存在或无法读取，返回空对象
+        return {};
     }
 }
 
-// 写入数据文件
+// 写入待办事项数据文件
 function writeTodosData(data) {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// 读取用户数据文件
+function readUsersData() {
+    try {
+        const data = fs.readFileSync(USERS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        // 如果文件不存在或无法读取，返回空对象
+        return {};
+    }
+}
+
+// 写入用户数据文件
+function writeUsersData(data) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// 验证用户凭据
+function authenticateUser(username, password) {
+    const users = readUsersData();
+    const user = users[username];
+    if (user && user.password === hashPassword(password)) {
+        return user;
+    }
+    return null;
+}
+
+// 获取用户会话信息
+function getSession(token) {
+    const users = readUsersData();
+    for (const username in users) {
+        if (users[username].token === token) {
+            return users[username];
+        }
+    }
+    return null;
 }
 
 // 创建HTTP服务器
 const server = http.createServer((req, res) => {
     // 处理API请求
-    if (req.url.startsWith('/api/todos')) {
+    if (req.url.startsWith('/api/auth')) {
         // 允许跨域
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         
         // 处理OPTIONS请求
         if (req.method === 'OPTIONS') {
@@ -43,11 +97,139 @@ const server = http.createServer((req, res) => {
             return;
         }
         
-        // 获取所有待办事项
-        if (req.url === '/api/todos' && req.method === 'GET') {
-            const todos = readTodosData();
+        // 注册新用户
+        if (req.url === '/api/auth/register' && req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk) => {
+                body += chunk;
+            });
+            req.on('end', () => {
+                try {
+                    const userData = JSON.parse(body);
+                    const users = readUsersData();
+                    
+                    if (users[userData.username]) {
+                        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '用户名已存在' }));
+                        return;
+                    }
+                    
+                    const newUser = {
+                        username: userData.username,
+                        password: hashPassword(userData.password),
+                        token: null,
+                        createdAt: Date.now()
+                    };
+                    
+                    users[userData.username] = newUser;
+                    writeUsersData(users);
+                    
+                    // 为新用户创建空的待办事项列表
+                    const todosData = readTodosData();
+                    todosData[userData.username] = [];
+                    writeTodosData(todosData);
+                    
+                    res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ message: '注册成功' }));
+                } catch (error) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
+                }
+            });
+            return;
+        }
+        
+        // 用户登录
+        if (req.url === '/api/auth/login' && req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk) => {
+                body += chunk;
+            });
+            req.on('end', () => {
+                try {
+                    const loginData = JSON.parse(body);
+                    const user = authenticateUser(loginData.username, loginData.password);
+                    
+                    if (user) {
+                        // 生成新的会话令牌
+                        const token = generateToken();
+                        const users = readUsersData();
+                        users[user.username].token = token;
+                        writeUsersData(users);
+                        
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ token, username: user.username }));
+                    } else {
+                        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '用户名或密码错误' }));
+                    }
+                } catch (error) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
+                }
+            });
+            return;
+        }
+        
+        // 用户登出
+        if (req.url === '/api/auth/logout' && req.method === 'POST') {
+            const token = req.headers.authorization?.replace('Bearer ', '');
+            if (token) {
+                const user = getSession(token);
+                if (user) {
+                    const users = readUsersData();
+                    users[user.username].token = null;
+                    writeUsersData(users);
+                }
+            }
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify(todos));
+            res.end(JSON.stringify({ message: '登出成功' }));
+            return;
+        }
+        
+        // 验证会话
+        if (req.url === '/api/auth/verify' && req.method === 'GET') {
+            const token = req.headers.authorization?.replace('Bearer ', '');
+            if (token) {
+                const user = getSession(token);
+                if (user) {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ username: user.username }));
+                    return;
+                }
+            }
+            res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: '未授权' }));
+            return;
+        }
+    } else if (req.url.startsWith('/api/todos')) {
+        // 允许跨域
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        
+        // 处理OPTIONS请求
+        if (req.method === 'OPTIONS') {
+            res.writeHead(200);
+            res.end();
+            return;
+        }
+        
+        // 验证用户会话
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        const user = getSession(token);
+        if (!user) {
+            res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: '未授权' }));
+            return;
+        }
+        
+        // 获取当前用户的所有待办事项
+        if (req.url === '/api/todos' && req.method === 'GET') {
+            const todosData = readTodosData();
+            const userTodos = todosData[user.username] || [];
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(userTodos));
             return;
         }
         
@@ -60,17 +242,21 @@ const server = http.createServer((req, res) => {
             req.on('end', () => {
                 try {
                     const todo = JSON.parse(body);
-                    const todos = readTodosData();
+                    const todosData = readTodosData();
+                    if (!todosData[user.username]) {
+                        todosData[user.username] = [];
+                    }
                     todo.id = Date.now();
                     todo.completed = todo.completed || false;
                     todo.createdAt = Date.now();
-                    todos.push(todo);
-                    writeTodosData(todos);
+                    todo.updatedAt = Date.now();
+                    todosData[user.username].push(todo);
+                    writeTodosData(todosData);
                     res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify(todo));
                 } catch (error) {
-                    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-                    res.end('无效的JSON数据');
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
                 }
             });
             return;
@@ -87,27 +273,29 @@ const server = http.createServer((req, res) => {
             req.on('end', () => {
                 try {
                     const updateData = JSON.parse(body);
-                    const todos = readTodosData();
-                    const todoIndex = todos.findIndex(t => t.id === todoId);
+                    const todosData = readTodosData();
+                    const userTodos = todosData[user.username] || [];
+                    const todoIndex = userTodos.findIndex(t => t.id === todoId);
                     
                     if (todoIndex !== -1) {
                         if (updateData.text !== undefined) {
-                            todos[todoIndex].text = updateData.text;
+                            userTodos[todoIndex].text = updateData.text;
                         }
                         if (updateData.completed !== undefined) {
-                            todos[todoIndex].completed = updateData.completed;
+                            userTodos[todoIndex].completed = updateData.completed;
                         }
-                        todos[todoIndex].updatedAt = Date.now();
-                        writeTodosData(todos);
+                        userTodos[todoIndex].updatedAt = Date.now();
+                        todosData[user.username] = userTodos;
+                        writeTodosData(todosData);
                         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(JSON.stringify(todos[todoIndex]));
+                        res.end(JSON.stringify(userTodos[todoIndex]));
                     } else {
-                        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-                        res.end('找不到待办事项');
+                        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ error: '找不到待办事项' }));
                     }
                 } catch (error) {
-                    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-                    res.end('无效的JSON数据');
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ error: '无效的JSON数据' }));
                 }
             });
             return;
@@ -117,25 +305,29 @@ const server = http.createServer((req, res) => {
         const deleteMatch = req.url.match(/^\/api\/todos\/(\d+)$/);
         if (deleteMatch && req.method === 'DELETE') {
             const todoId = parseInt(deleteMatch[1]);
-            const todos = readTodosData();
-            const filteredTodos = todos.filter(t => t.id !== todoId);
+            const todosData = readTodosData();
+            const userTodos = todosData[user.username] || [];
+            const filteredTodos = userTodos.filter(t => t.id !== todoId);
             
-            if (filteredTodos.length !== todos.length) {
-                writeTodosData(filteredTodos);
+            if (filteredTodos.length !== userTodos.length) {
+                todosData[user.username] = filteredTodos;
+                writeTodosData(todosData);
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ message: '已删除待办事项' }));
             } else {
-                res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-                res.end('找不到待办事项');
+                res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ error: '找不到待办事项' }));
             }
             return;
         }
         
         // 清除已完成的待办事项
         if (req.url === '/api/todos/clear-completed' && req.method === 'DELETE') {
-            const todos = readTodosData();
-            const activeTodos = todos.filter(t => !t.completed);
-            writeTodosData(activeTodos);
+            const todosData = readTodosData();
+            const userTodos = todosData[user.username] || [];
+            const activeTodos = userTodos.filter(t => !t.completed);
+            todosData[user.username] = activeTodos;
+            writeTodosData(todosData);
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ message: '已清除所有已完成的待办事项' }));
             return;
