@@ -344,12 +344,15 @@ async function addTodo() {
     if (text !== '') {
         try {
             console.log('尝试添加待办事项到服务器');
-            // 尝试添加到服务器
+            // 尝试添加到服务器 - 添加缓存控制头
             const response = await fetch('/api/todos', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
+                    'Authorization': `Bearer ${authToken}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
                 },
                 body: JSON.stringify({ text, completed: false })
             });
@@ -376,6 +379,9 @@ async function addTodo() {
             
             // 保存到本地存储备份（带用户名前缀）
             saveTodosLocally();
+            
+            // 清除浏览器缓存并强制重新渲染
+            forceCacheRefresh();
             renderTodos();
             updateTaskCount();
             todoInput.value = '';
@@ -411,12 +417,15 @@ async function toggleTodo(id) {
         const newCompletedState = !todo.completed;
         
         try {
-            // 尝试更新服务器
+            // 尝试更新服务器 - 添加缓存控制头
             const response = await fetch(`/api/todos/${id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
+                    'Authorization': `Bearer ${authToken}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
                 },
                 body: JSON.stringify({ completed: newCompletedState })
             });
@@ -430,6 +439,9 @@ async function toggleTodo(id) {
             // 更新本地数据
             todo.completed = newCompletedState;
             saveTodosLocally();
+            
+            // 清除浏览器缓存并强制重新渲染
+            forceCacheRefresh();
             renderTodos();
             updateTaskCount();
         } catch (error) {
@@ -446,11 +458,14 @@ async function toggleTodo(id) {
 // 删除待办事项
 async function deleteTodo(id) {
     try {
-        // 尝试从服务器删除
+        // 尝试从服务器删除 - 添加缓存控制头
         const response = await fetch(`/api/todos/${id}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             }
         });
         
@@ -463,6 +478,9 @@ async function deleteTodo(id) {
         // 更新本地数据
         todos = todos.filter(todo => todo.id !== id);
         saveTodosLocally();
+        
+        // 清除浏览器缓存并强制重新渲染
+        forceCacheRefresh();
         renderTodos();
         updateTaskCount();
     } catch (error) {
@@ -494,11 +512,14 @@ function setFilter(filter) {
 // 清除已完成的待办事项
 async function clearCompletedTodos() {
     try {
-        // 尝试在服务器上清除
+        // 尝试在服务器上清除 - 添加缓存控制头
         const response = await fetch('/api/todos/clear-completed', {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             }
         });
         
@@ -508,15 +529,33 @@ async function clearCompletedTodos() {
             return;
         }
         
-        // 更新本地数据
-        todos = todos.filter(todo => !todo.completed);
+        // 确保服务器响应成功
+        if (!response.ok) {
+            throw new Error(`服务器错误: ${response.status}`);
+        }
+        
+        // 从响应中获取清除数量信息
+        const responseData = await response.json();
+        console.log('服务器返回清除结果:', responseData);
+        
+        // 重新从服务器获取最新的待办事项数据
+        await loadTodos();
+        console.log('成功从服务器获取更新后的待办事项数据');
+        
+        // 保存最新数据到本地存储
         saveTodosLocally();
+        
+        // 重新渲染UI
         renderTodos();
         updateTaskCount();
+        
     } catch (error) {
         console.error('清除已完成待办事项失败:', error);
         // 降级处理：只更新本地
+        const beforeCount = todos.length;
         todos = todos.filter(todo => !todo.completed);
+        const clearedCount = beforeCount - todos.length;
+        console.log(`降级到本地清除，清除了 ${clearedCount} 个已完成待办事项`);
         saveTodosLocally();
         renderTodos();
         updateTaskCount();
@@ -704,6 +743,47 @@ function saveTodos() {
     saveTodosLocally();
 }
 
+// 强制刷新浏览器缓存的函数
+function forceCacheRefresh() {
+    console.log('执行强制缓存刷新');
+    
+    // 清除相关的HTTP缓存
+    if ('caches' in window) {
+        // 清除Service Worker缓存
+        caches.keys().then(cacheNames => {
+            cacheNames.forEach(cacheName => {
+                if (cacheName.includes('todo-app')) {
+                    caches.delete(cacheName).then(deleted => {
+                        console.log(`缓存 ${cacheName} ${deleted ? '已删除' : '删除失败'}`);
+                    });
+                }
+            });
+        }).catch(error => {
+            console.error('清除缓存失败:', error);
+        });
+    }
+    
+    // 清除相关的本地存储（除了必要的认证信息）
+    const keysToKeep = ['authToken', 'username'];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!keysToKeep.includes(key) && key.includes('todos_')) {
+            console.log(`清除本地存储: ${key}`);
+            localStorage.removeItem(key);
+            i--; // 调整索引以避免跳过项目
+        }
+    }
+    
+    // 确保重新加载最新数据
+    setTimeout(() => {
+        if (authToken && currentUser) {
+            console.log('触发数据重新加载以确保显示最新内容');
+            // 这里不直接调用loadTodos()避免可能的无限循环
+            // 而是确保下一次操作能获取到最新数据
+        }
+    }, 0);
+}
+
 // 从服务器加载待办事项
 async function loadTodos() {
     console.log('======= 前端调试信息 - loadTodos =======');
@@ -717,7 +797,7 @@ async function loadTodos() {
         todos = [];
     }
     
-    // 立即创建并显示测试数据，确保用户能看到内容
+    // 创建测试数据（仅作为降级方案使用）
     const testTodos = [
         { id: Date.now(), text: '测试待办事项 1', completed: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
         { id: Date.now() + 1, text: '测试待办事项 2', completed: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
@@ -726,85 +806,75 @@ async function loadTodos() {
         { id: Date.now() + 4, text: '测试待办事项 5', completed: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
     ];
     
-    console.log('创建测试数据:', testTodos);
-    
-    // 立即渲染测试数据
-    todos = testTodos;
-    console.log('立即更新todos数组:', todos);
-    renderTodos();
-    updateTaskCount();
-    
-    console.log('测试数据已渲染到页面');
-    
-    // 设置定时器，确保即使异步操作出现问题，数据也会被显示
-    setTimeout(() => {
-        console.log('执行延迟检查和渲染确保数据显示');
-        if (!todos || todos.length === 0) {
-            console.log('重新渲染测试数据以防数据丢失');
-            todos = testTodos;
-        }
-        renderTodos();
-        updateTaskCount();
-    }, 500);
-    
-    // 尝试从服务器获取数据（即使失败也不影响已显示的测试数据）
     try {
         // 检查认证状态
         if (!authToken || !currentUser) {
-            console.log('未登录状态，继续使用测试数据');
+            console.log('未登录状态，先尝试加载本地数据');
+            loadTodosLocally();
+            // 如果本地没有数据，再使用测试数据
+            if (todos.length === 0) {
+                console.log('本地没有数据，使用测试数据');
+                todos = testTodos;
+            }
+            renderTodos();
+            updateTaskCount();
             return Promise.resolve(todos);
         }
         
+        // 先尝试加载本地数据作为备用
+        loadTodosLocally();
+        
         console.log('尝试发送GET /api/todos请求');
         
-        // 使用fetch发送请求
+        // 使用fetch发送请求 - 加强缓存控制
         const response = await fetch('/api/todos', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache',
-                'X-Debug-Time': new Date().getTime().toString()
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'X-No-Cache': 'true',
+                'X-Request-ID': Date.now().toString() // 添加唯一标识符确保请求不被缓存
             },
-            credentials: 'include' // 确保包含cookies
+            credentials: 'include', // 确保包含cookies
+            cache: 'no-store' // 现代浏览器API，显式禁用缓存
         });
         
         console.log('请求完成，状态码:', response.status);
         
         if (response.status === 401) {
-            console.error('认证失效，但保持测试数据显示');
-            return Promise.resolve(todos);
+            console.error('认证失效，使用测试数据');
+            todos = testTodos;
         } else if (response.ok) {
             try {
                 const data = await response.json();
                 console.log('从服务器获取到数据:', data);
                 
-                // 如果服务器返回了有效数据，则更新UI
-                if (Array.isArray(data) && data.length > 0) {
+                // 如果服务器返回了有效数据，则使用真实数据
+                if (Array.isArray(data)) {
                     console.log('使用服务器数据更新UI');
                     todos = data;
-                    
-                    // 设置定时器确保数据正确渲染
-                    setTimeout(() => {
-                        renderTodos();
-                        updateTaskCount();
-                    }, 0);
+                } else {
+                    console.log('服务器返回数据格式错误，使用本地数据');
+                    // 保留之前加载的本地数据，不再使用测试数据
                 }
             } catch (jsonError) {
-                console.error('解析JSON失败，保持测试数据显示:', jsonError);
+                console.error('解析JSON失败，使用测试数据:', jsonError);
+                todos = testTodos;
             }
         } else {
-            console.error('服务器返回错误状态，但保持测试数据显示:', response.status);
+            console.error('服务器返回错误状态，使用本地数据:', response.status);
+            // 保留之前加载的本地数据，不再使用测试数据
         }
     } catch (error) {
-        console.error('请求失败，但保持测试数据显示:', error);
+        console.error('请求失败，使用本地数据:', error);
+        // 保留之前加载的本地数据，不再使用测试数据
     } finally {
-        // 最终确保数据被显示
-        setTimeout(() => {
-            console.log('最终确认数据显示');
-            renderTodos();
-            updateTaskCount();
-        }, 1000);
+        // 确保数据被显示
+        renderTodos();
+        updateTaskCount();
         
         console.log('loadTodos函数执行结束');
         console.log('===============================');

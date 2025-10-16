@@ -499,14 +499,15 @@ const server = http.createServer((req, res) => {
             req.on('end', () => {
                 try {
                     const todoData = JSON.parse(body);
-                    // 确保用户的待办事项数组存在
-                    if (!todosData[userId]) {
-                        todosData[userId] = [];
-                    }
                     console.log('解析更新数据成功:', todoData);
                     
                     // 读取待办事项数据
                     const todosData = readTodosData();
+                    
+                    // 确保用户的待办事项数组存在
+                    if (!todosData[userId]) {
+                        todosData[userId] = [];
+                    }
                     
                     // 检查用户待办事项数组是否存在
                     if (!todosData[userId]) {
@@ -556,7 +557,7 @@ const server = http.createServer((req, res) => {
         }
         
         // 删除待办事项
-        if (req.url.startsWith('/api/todos/') && req.method === 'DELETE') {
+        if (req.url.startsWith('/api/todos/') && req.method === 'DELETE' && req.url !== '/api/todos/clear-completed') {
             const deleteMatch = req.url.match(/\/api\/todos\/(\d+)/);
             const todoId = deleteMatch ? parseInt(deleteMatch[1]) : null;
             
