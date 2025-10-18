@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="format-detection" content="telephone=no">
     <title>现代待办事项列表</title>
     <!-- PWA相关标签 -->
     <link rel="manifest" href="manifest.json">
@@ -77,6 +78,9 @@
             padding: 30px;
             max-width: 500px;
             margin: 0 auto;
+            /* 确保认证容器能够在键盘弹出时正常显示 */
+            position: relative;
+            z-index: 1;
         }
 
         /* 表单样式 */
@@ -311,6 +315,13 @@
                 gap: 10px;
                 text-align: center;
             }
+            
+            /* 移动设备键盘适配 */
+            .auth-form input:focus {
+                /* 输入框获取焦点时的样式调整 */
+                transform: scale(1.01);
+                box-shadow: 0 0 8px rgba(52, 152, 219, 0.3);
+            }
         }
     </style>
 </head>
@@ -388,5 +399,71 @@
     </div>
 
     <script src="app.js"></script>
+    <script>
+     // 移动端键盘适配脚本 - 同时支持登录和注册表单
+     document.addEventListener('DOMContentLoaded', () => {
+         // 单独选择登录表单和注册表单的所有输入框，确保全部覆盖
+         const loginInputs = document.querySelectorAll('#login-form input');
+         const registerInputs = document.querySelectorAll('#register-form input');
+         // 合并所有认证输入框
+         const allAuthInputs = [...loginInputs, ...registerInputs];
+         
+         // 为所有认证输入框（包括登录和注册表单）添加焦点事件处理
+         allAuthInputs.forEach(input => {
+             input.addEventListener('focus', () => {
+                 setTimeout(() => {
+                     // 延迟执行，确保键盘已经弹出
+                     const rect = input.getBoundingClientRect();
+                     const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+                     
+                     // 当键盘弹出时，确保输入框距离屏幕底部有足够的空间
+                     // 降低阈值以更好地适应注册表单的多输入框布局
+                     if (rect.bottom > windowHeight * 0.65) {
+                         // 优化滚动计算，确保输入框在合适的位置
+                         const scrollToY = window.pageYOffset + rect.top - 80;
+                         window.scrollTo({
+                             top: scrollToY,
+                             behavior: 'smooth'
+                         });
+                     }
+                 }, 200); // 缩短延迟时间，提升响应速度
+             });
+         });
+         
+         // 监听窗口大小变化（键盘弹出/收起时会触发）
+         window.addEventListener('resize', () => {
+             const focusedInput = document.activeElement;
+             if (focusedInput && allAuthInputs.includes(focusedInput)) {
+                 setTimeout(() => {
+                     const rect = focusedInput.getBoundingClientRect();
+                     const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+                     
+                     if (rect.bottom > windowHeight * 0.65) {
+                         const scrollToY = window.pageYOffset + rect.top - 80;
+                         window.scrollTo({
+                             top: scrollToY,
+                             behavior: 'smooth'
+                         });
+                     }
+                 }, 50); // 缩短窗口调整延迟
+             }
+         });
+         
+         // 监听表单切换，确保在切换后输入框也能正常工作
+         document.getElementById('show-register').addEventListener('click', () => {
+             // 注册表单显示后，重置任何可能的滚动位置
+             setTimeout(() => {
+                 window.scrollTo({ top: 0, behavior: 'smooth' });
+             }, 100);
+         });
+         
+         document.getElementById('show-login').addEventListener('click', () => {
+             // 登录表单显示后，重置任何可能的滚动位置
+             setTimeout(() => {
+                 window.scrollTo({ top: 0, behavior: 'smooth' });
+             }, 100);
+         });
+     });
+     </script>
 </body>
 </html>
